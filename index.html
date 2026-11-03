@@ -69,9 +69,18 @@ section{position:relative;isolation:isolate}section:before{content:'';position:a
 /* Pair the four projects into two balanced rows. */
 .app-project .project-body{display:flex;flex-direction:column;flex:1}.app-project .app-preview{flex-shrink:0}.app-project .app-viewport{height:200px;aspect-ratio:auto;max-height:200px}.app-project .app-preview-toolbar{min-height:36px}.app-project .app-availability{min-height:44px}.app-project .chips{margin-bottom:20px}.app-project .project-footer{margin-top:auto}.app-project .award-source{min-height:17px}.app-project .project-top{margin-bottom:0}@media(max-width:600px){.projects{gap:20px}.app-project .app-viewport{height:180px;max-height:180px}.app-project .app-availability{min-height:0}}
 
+
+/* Pointer effects are decorative: keep native pointing and all click targets. */
+.cursor-fx{position:fixed;inset:0;z-index:50;pointer-events:none;overflow:hidden;contain:strict}.cursor-fx *{pointer-events:none!important}.cursor-dot,.cursor-ring,.cursor-glow{position:absolute;left:0;top:0;will-change:transform}.cursor-dot{width:5px;height:5px;border-radius:50%;background:var(--accent);box-shadow:0 0 10px color-mix(in srgb,var(--accent) 55%,transparent)}.cursor-ring{width:34px;height:34px}.cursor-ring i{display:block;width:100%;height:100%;border:1px solid var(--accent);border-radius:50%;opacity:.7;transition:transform .25s,background .25s}.cursor-glow{width:180px;height:180px;background:radial-gradient(circle,color-mix(in srgb,var(--accent) 9%,transparent),transparent 65%);border-radius:50%}.cursor-fx[data-state=link] .cursor-ring i{transform:scale(1.65);background:color-mix(in srgb,var(--accent) 9%,transparent)}.cursor-fx[data-state=link] .cursor-dot{opacity:.45}.cursor-ripple{position:absolute;width:22px;height:22px;border:1px solid var(--accent);border-radius:50%;animation:cursor-click .65s ease-out both}
+[data-motion=off] .cursor-fx{display:none!important}.spark{position:absolute;width:3px;height:3px;background:var(--accent);border-radius:50%;box-shadow:0 0 8px color-mix(in srgb,var(--accent) 35%,transparent);opacity:.3}[data-motion=on] .spark{animation:spark-drift 12s ease-in-out infinite alternate;animation-delay:var(--spark-delay,0s)}[data-motion=on] .cube-one{animation-duration:24s}[data-motion=on] .cube-two{animation-duration:30s}[data-motion=on] .portrait-float{animation-duration:5s}[data-motion=on] .portrait-halo{animation-duration:20s}[data-motion=on] .halo-two{animation-duration:27s}[data-motion=on] .space-ring{animation-duration:18s}
+[data-motion=on] h1 em,[data-motion=on] h2 em{background:linear-gradient(110deg,var(--accent) 15%,var(--orange) 45%,var(--accent) 75%);background-size:250% 100%;background-clip:text;-webkit-background-clip:text;color:transparent;animation:title-flow 8s ease-in-out infinite}[data-motion=on] .app-project.motion-visible{animation:card-aura 7s ease-in-out infinite}[data-motion=on] .browser-dots i{animation:browser-breathe 4s ease-in-out infinite}.browser-dots i:nth-child(2){animation-delay:.3s!important}.browser-dots i:nth-child(3){animation-delay:.6s!important}.btn span{transition:translate .25s}.btn:hover span{translate:3px -2px}.reveal-ready{transform:perspective(900px) translateY(36px) rotateX(6deg)}.reveal-ready.revealed{transform:none}
+@keyframes cursor-click{from{opacity:.7;transform:translate(-50%,-50%) scale(.5)}to{opacity:0;transform:translate(-50%,-50%) scale(3.3)}}@keyframes spark-drift{to{translate:20px -55px;opacity:.65}}@keyframes title-flow{50%{background-position:100% 50%}}@keyframes card-aura{50%{box-shadow:0 0 28px color-mix(in srgb,var(--accent) 7%,transparent)}}@keyframes browser-breathe{50%{opacity:.95;background:var(--accent)}}
+@media(hover:none),(pointer:coarse){.cursor-fx{display:none!important}.spark:nth-of-type(n+5){display:none}}@media(prefers-reduced-motion:reduce){.cursor-fx{display:none!important}h1 em,h2 em{background:none!important;color:var(--accent)!important}.spark{display:none}}
+
 </style>
 </head>
 <body>
+<div class="cursor-fx" id="cursorFX" aria-hidden="true" hidden><span class="cursor-glow"></span><span class="cursor-ring"><i></i></span><span class="cursor-dot"></span><span class="cursor-ripples"></span></div>
 <div class="depth-scene" aria-hidden="true"><div class="ambient ambient-one"></div><div class="ambient ambient-two"></div><div class="space-grid"></div><div class="wire-cube cube-one"><i></i><i></i><i></i><i></i><i></i><i></i></div><div class="wire-cube cube-two"><i></i><i></i><i></i><i></i><i></i><i></i></div><div class="space-ring"></div></div>
 <div class="reading-progress" aria-hidden="true"></div>
 <a class="skip" href="#main">Skip to content</a>
@@ -200,6 +209,31 @@ appDialog.addEventListener('click',event=>{if(event.target===appDialog){const bo
 document.querySelectorAll('.skills .skill,.chip,.certificate').forEach((element,index)=>element.style.setProperty('--item-order',index%10));
 if('IntersectionObserver' in window){const motionObserver=new IntersectionObserver(entries=>entries.forEach(entry=>entry.target.classList.toggle('motion-visible',entry.isIntersecting)),{threshold:.06});document.querySelectorAll('section,.project,.skills,.timeline-item,.certificate,.contact,.journey,.award-banner').forEach(element=>motionObserver.observe(element));}
 document.addEventListener('visibilitychange',()=>{root.dataset.pageHidden=String(document.hidden);});
+
+
+// A bounded, event-driven cursor loop stops as soon as the trailing ring settles.
+const cursorFX=document.getElementById('cursorFX'),cursorDot=cursorFX.querySelector('.cursor-dot'),cursorRing=cursorFX.querySelector('.cursor-ring'),cursorGlow=cursorFX.querySelector('.cursor-glow'),cursorRipples=cursorFX.querySelector('.cursor-ripples');
+let cursorFrame=0,cursorStarted=false,targetX=0,targetY=0,ringX=0,ringY=0;
+function cursorEnabled(){return root.dataset.motion==='on'&&finePointer.matches&&!reducedMotion.matches&&!document.hidden&&!document.querySelector('dialog[open]');}
+function hideCursor(){cursorFX.hidden=true;cursorStarted=false;if(cursorFrame)cancelAnimationFrame(cursorFrame);cursorFrame=0;cursorRipples.replaceChildren();}
+function drawCursor(){cursorFrame=0;if(!cursorEnabled()||!cursorStarted){hideCursor();return;}ringX+=(targetX-ringX)*.2;ringY+=(targetY-ringY)*.2;
+ cursorDot.style.transform=`translate3d(${targetX}px,${targetY}px,0) translate(-50%,-50%)`;
+ cursorRing.style.transform=`translate3d(${ringX.toFixed(2)}px,${ringY.toFixed(2)}px,0) translate(-50%,-50%)`;
+ cursorGlow.style.transform=`translate3d(${ringX.toFixed(2)}px,${ringY.toFixed(2)}px,0) translate(-50%,-50%)`;
+ if(Math.abs(targetX-ringX)+Math.abs(targetY-ringY)>.15)cursorFrame=requestAnimationFrame(drawCursor);
+}
+document.addEventListener('pointermove',event=>{if(event.pointerType==='touch'||!cursorEnabled()){hideCursor();return;}
+ targetX=event.clientX;targetY=event.clientY;if(!cursorStarted){ringX=targetX;ringY=targetY;cursorStarted=true;}
+ cursorFX.hidden=false;cursorFX.dataset.state=event.target instanceof Element&&event.target.closest('a,button,summary,input,textarea,select')?'link':'default';
+ if(!cursorFrame)cursorFrame=requestAnimationFrame(drawCursor);
+},{passive:true});
+document.addEventListener('pointerdown',event=>{if(event.pointerType==='touch'||!cursorEnabled()||!cursorStarted)return;const ripple=document.createElement('i');ripple.className='cursor-ripple';ripple.style.left=event.clientX+'px';ripple.style.top=event.clientY+'px';if(cursorRipples.childElementCount>=6)cursorRipples.firstElementChild.remove();cursorRipples.append(ripple);ripple.addEventListener('animationend',()=>ripple.remove(),{once:true});setTimeout(()=>ripple.remove(),850);},{passive:true});
+document.documentElement.addEventListener('pointerleave',hideCursor);window.addEventListener('blur',hideCursor);document.addEventListener('keydown',event=>{if(event.key==='Tab')hideCursor();});document.addEventListener('visibilitychange',hideCursor);finePointer.addEventListener('change',hideCursor);reducedMotion.addEventListener('change',hideCursor);
+new MutationObserver(()=>{if(root.dataset.motion!=='on')hideCursor();}).observe(root,{attributes:true,attributeFilter:['data-motion']});
+document.querySelectorAll('dialog').forEach(modal=>{new MutationObserver(()=>{if(modal.open)hideCursor();}).observe(modal,{attributes:true,attributeFilter:['open']});});
+// A small, fixed particle set adds ambient depth without a persistent JS loop.
+const sparkPositions=[[7,18],[16,65],[25,34],[38,84],[46,12],[58,58],[67,29],[78,76],[86,44],[95,9]];
+sparkPositions.forEach(([left,top],index)=>{const spark=document.createElement('span');spark.className='spark';spark.style.left=left+'%';spark.style.top=top+'%';spark.style.setProperty('--spark-delay',(-index*1.2)+'s');document.querySelector('.depth-scene').append(spark);});
 
 </script>
 </body>
